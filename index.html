@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patient Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root{--primary:#2563eb;--primary-light:#3b82f6;--success:#10b981;--warning:#f59e0b;--danger:#ef4444;--gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;--gray-600:#4b5563;--gray-800:#1f2937}
+    body{background:var(--gray-50);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:var(--gray-800)}
+    .scorecard{background:#fff;border-radius:10px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid var(--gray-200);transition:box-shadow .2s}
+    .scorecard:hover{box-shadow:0 4px 12px rgba(0,0,0,.1)}
+    .scorecard-value{font-size:2rem;font-weight:700;color:var(--primary)}
+    .scorecard-label{font-size:.875rem;color:var(--gray-600);font-weight:500}
+    .card{border:1px solid var(--gray-200);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .card-header{background:#fff;border-bottom:1px solid var(--gray-200);padding:.875rem 1.25rem}
+    .table{margin-bottom:0}
+    .table th{font-weight:600;color:var(--gray-600);font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--gray-200);padding:.75rem 1rem}
+    .table td{padding:.75rem 1rem;vertical-align:middle;border-color:var(--gray-100)}
+    .table tbody tr:hover{background:var(--gray-50)}
+    .badge-upcoming{background:#dbeafe;color:#1e40af}
+    .badge-pastdue{background:#fee2e2;color:#991b1b}
+    .btn-toggle{border:1px solid var(--gray-200);background:#fff;color:var(--gray-600);font-size:.875rem;padding:.375rem .75rem}
+    .btn-toggle.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .form-control,.form-select{border-color:var(--gray-200);font-size:.875rem}
+    .form-control:focus,.form-select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+    .btn-primary{background:var(--primary);border-color:var(--primary)}
+    .btn-primary:hover{background:var(--primary-light);border-color:var(--primary-light)}
+    .loading{display:flex;justify-content:center;align-items:center;padding:3rem}
+    .spinner{width:2.5rem;height:2.5rem;border:3px solid var(--gray-200);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .action-btn{padding:.25rem .5rem;font-size:.75rem}
+    .table-responsive{max-height:400px;overflow-y:auto}
+  </style>
+</head>
+<body>
+  <div class="container-fluid py-3 px-4">
+    <!-- Filters Row -->
+    <div class="row g-2 mb-3 align-items-center">
+      <div class="col-auto">
+        <select id="filterRange" class="form-select form-select-sm" style="width:auto">
+          <option value="all">All Time</option>
+          <option value="ytd">YTD</option>
+          <option value="mtd">MTD</option>
+          <option value="7">Last 7 Days</option>
+          <option value="14">Last 14 Days</option>
+          <option value="30">Last 30 Days</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select id="filterYear" class="form-select form-select-sm" style="width:auto">
+          <option value="all">All Years</option>
+        </select>
+      </div>
+      <div class="col-auto ms-auto">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#patientModal" onclick="openAddModal()">
+          <i class="bi bi-plus-lg me-1"></i>Add Patient
+        </button>
+      </div>
+    </div>
+
+    <!-- Scorecards -->
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="scorecard">
+          <div class="scorecard-value" id="totalPatients">-</div>
+          <div class="scorecard-label">Total Patients</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="scorecard">
+          <div class="scorecard-value" id="upcomingRecerts">-</div>
+          <div class="scorecard-label">Upcoming Recertifications</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Patient List Card -->
+    <div class="card">
+      <div class="card-header d-flex flex-wrap align-items-center gap-2">
+        <span class="fw-semibold me-3">Active Patients</span>
+        <div class="btn-group btn-group-sm me-auto">
+          <button type="button" class="btn btn-toggle active" id="btnUpcoming" onclick="setView('upcoming')">By Upcoming</button>
+          <button type="button" class="btn btn-toggle" id="btnPastDue" onclick="setView('pastdue')">By Past Due</button>
+        </div>
+        <div class="position-relative">
+          <i class="bi bi-search position-absolute" style="left:10px;top:50%;transform:translateY(-50%);color:var(--gray-600)"></i>
+          <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Search patients..." style="padding-left:2rem;width:200px" oninput="filterPatients()">
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div id="loadingState" class="loading"><div class="spinner"></div></div>
+        <div id="tableContainer" class="table-responsive" style="display:none">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>Patient Name</th>
+                <th>Admission Date</th>
+                <th>Current Period</th>
+                <th>Recertification Period</th>
+                <th>Status</th>
+                <th style="width:100px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="patientTableBody"></tbody>
+          </table>
+        </div>
+        <div id="emptyState" class="text-center py-4 text-muted" style="display:none">
+          <i class="bi bi-inbox fs-1"></i>
+          <p class="mt-2 mb-0">No patients found</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient Modal -->
+  <div class="modal fade" id="patientModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalTitle">Add Patient</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editRow">
+          <div class="mb-3">
+            <label class="form-label">Patient Name</label>
+            <input type="text" id="patientName" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Admission Date</label>
+            <input type="date" id="admissionDate" class="form-control" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="deleteBtn" style="display:none" onclick="deletePatient()">Delete</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="savePatient()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let allPatients = [];
+    let filteredPatients = [];
+    let currentView = 'upcoming';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadData();
+      document.getElementById('filterRange').addEventListener('change', filterPatients);
+      document.getElementById('filterYear').addEventListener('change', filterPatients);
+    });
+
+    function loadData() {
+      google.script.run.withSuccessHandler(data => {
+        allPatients = data;
+        loadYears();
+        filterPatients();
+      }).withFailureHandler(err => {
+        console.error(err);
+        showEmpty();
+      }).getPatientData();
+    }
+
+    function loadYears() {
+      google.script.run.withSuccessHandler(years => {
+        const sel = document.getElementById('filterYear');
+        years.forEach(y => {
+          const opt = document.createElement('option');
+          opt.value = y;
+          opt.textContent = y;
+          sel.appendChild(opt);
+        });
+      }).getAvailableYears();
+    }
+
+    function filterPatients() {
+      const range = document.getElementById('filterRange').value;
+      const year = document.getElementById('filterYear').value;
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      filteredPatients = allPatients.filter(p => {
+        if (!p.admissionDateRaw) return false;
+        const admDate = new Date(p.admissionDateRaw);
+        
+        // Date range filter
+        if (range !== 'all') {
+          let startDate;
+          if (range === 'ytd') startDate = new Date(now.getFullYear(), 0, 1);
+          else if (range === 'mtd') startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          else startDate = new Date(today.getTime() - parseInt(range) * 86400000);
+          if (admDate < startDate) return false;
+        }
+
+        // Year filter
+        if (year !== 'all' && admDate.getFullYear() !== parseInt(year)) return false;
+
+        // Search filter
+        if (search && !p.name.toLowerCase().includes(search)) return false;
+
+        return true;
+      });
+
+      // Sort by recert date
+      filteredPatients.sort((a, b) => {
+        if (!a.recertStartDate) return 1;
+        if (!b.recertStartDate) return -1;
+        return a.recertStartDate - b.recertStartDate;
+      });
+
+      // Filter by view
+      const displayPatients = filteredPatients.filter(p => {
+        if (!p.recertStartDate) return currentView === 'upcoming';
+        const recertDate = new Date(p.recertStartDate);
+        return currentView === 'upcoming' ? recertDate >= today : recertDate < today;
+      });
+
+      updateScoreCards();
+      renderTable(displayPatients);
+    }
+
+    function updateScoreCards() {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      document.getElementById('totalPatients').textContent = filteredPatients.length;
+      
+      const upcoming = filteredPatients.filter(p => {
+        if (!p.recertStartDate) return false;
+        const recertDate = new Date(p.recertStartDate);
+        const daysUntil = (recertDate - today) / 86400000;
+        return daysUntil >= 0 && daysUntil <= 30;
+      }).length;
+      
+      document.getElementById('upcomingRecerts').textContent = upcoming;
+    }
+
+    function renderTable(patients) {
+      document.getElementById('loadingState').style.display = 'none';
+      const tbody = document.getElementById('patientTableBody');
+      const container = document.getElementById('tableContainer');
+      const empty = document.getElementById('emptyState');
+
+      if (patients.length === 0) {
+        container.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+
+      container.style.display = 'block';
+      empty.style.display = 'none';
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      tbody.innerHTML = patients.map(p => {
+        let status = '';
+        if (p.recertStartDate) {
+          const recertDate = new Date(p.recertStartDate);
+          const daysUntil = Math.ceil((recertDate - today) / 86400000);
+          if (daysUntil < 0) {
+            status = `<span class="badge badge-pastdue">${Math.abs(daysUntil)} days overdue</span>`;
+          } else if (daysUntil <= 30) {
+            status = `<span class="badge badge-upcoming">${daysUntil} days</span>`;
+          } else {
+            status = `<span class="badge bg-light text-dark">${daysUntil} days</span>`;
+          }
+        }
+        return `<tr>
+          <td class="fw-medium">${escapeHtml(p.name)}</td>
+          <td>${p.admissionDate}</td>
+          <td>${escapeHtml(p.currentPeriod)}</td>
+          <td>${escapeHtml(p.recertPeriod)}</td>
+          <td>${status}</td>
+          <td>
+            <button class="btn btn-outline-secondary action-btn" onclick="openEditModal(${p.row},'${escapeJs(p.name)}','${p.admissionDateRaw}')">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function setView(view) {
+      currentView = view;
+      document.getElementById('btnUpcoming').classList.toggle('active', view === 'upcoming');
+      document.getElementById('btnPastDue').classList.toggle('active', view === 'pastdue');
+      filterPatients();
+    }
+
+    function openAddModal() {
+      document.getElementById('modalTitle').textContent = 'Add Patient';
+      document.getElementById('editRow').value = '';
+      document.getElementById('patientName').value = '';
+      document.getElementById('admissionDate').value = '';
+      document.getElementById('deleteBtn').style.display = 'none';
+    }
+
+    function openEditModal(row, name, dateRaw) {
+      document.getElementById('modalTitle').textContent = 'Edit Patient';
+      document.getElementById('editRow').value = row;
+      document.getElementById('patientName').value = name;
+      if (dateRaw) {
+        const d = new Date(parseInt(dateRaw));
+        document.getElementById('admissionDate').value = d.toISOString().split('T')[0];
+      }
+      document.getElementById('deleteBtn').style.display = 'block';
+      new bootstrap.Modal(document.getElementById('patientModal')).show();
+    }
+
+    function savePatient() {
+      const name = document.getElementById('patientName').value.trim();
+      const date = document.getElementById('admissionDate').value;
+      const row = document.getElementById('editRow').value;
+
+      if (!name || !date) {
+        alert('Please fill in all fields');
+        return;
+      }
+
+      const callback = () => {
+        bootstrap.Modal.getInstance(document.getElementById('patientModal')).hide();
+        loadData();
+      };
+
+      if (row) {
+        google.script.run.withSuccessHandler(callback).updatePatient(parseInt(row), name, date);
+      } else {
+        google.script.run.withSuccessHandler(callback).addPatient(name, date);
+      }
+    }
+
+    function deletePatient() {
+      if (!confirm('Delete this patient?')) return;
+      const row = document.getElementById('editRow').value;
+      google.script.run.withSuccessHandler(() => {
+        bootstrap.Modal.getInstance(document.getElementById('patientModal')).hide();
+        loadData();
+      }).deletePatient(parseInt(row));
+    }
+
+    function showEmpty() {
+      document.getElementById('loadingState').style.display = 'none';
+      document.getElementById('tableContainer').style.display = 'none';
+      document.getElementById('emptyState').style.display = 'block';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function escapeJs(str) {
+      if (!str) return '';
+      return str.toString().replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+    }
+  </script>
+</body>
+</html>
